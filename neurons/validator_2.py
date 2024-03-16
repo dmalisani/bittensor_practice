@@ -143,7 +143,7 @@ def main(config):
                 # Construct a dummy query.
                 template.protocol.ToHash( nounce_input = number ), # Construct a dummy query.
                 # All responses have the deserialize function called on them before returning.
-                deserialize = False, 
+                deserialize = True, 
             )
 
             # Log the results for monitoring purposes.
@@ -152,11 +152,30 @@ def main(config):
             for i, resp_i in enumerate(responses):
                 score = 0
                 bt.logging.debug(f"Response: {repr(resp_i)}")
-                if  resp_i.generated_hash == hash:
+                if  resp_i == hash:
                     score = 1
-                bt.logging.debug(f"Score: {score}")
                 scores[i] = alpha * score + (1 - alpha) * 0
 
+            # # Periodically update the weights on the Bittensor blockchain.
+            # if (step + 1) % 2 == 0:
+            #     # TODO(developer): Define how the validator normalizes scores before setting weights.
+            #     weights = torch.nn.functional.normalize(scores, p=1.0, dim=0)
+            #     bt.logging.info(f"Setting weights: {weights}")
+            #     # This is a crucial step that updates the incentive mechanism on the Bittensor blockchain.
+            #     # Miners with higher scores (or weights) receive a larger share of TAO rewards on this subnet.
+            #     result = subtensor.set_weights(
+            #         netuid = config.netuid, # Subnet to set weights on.
+            #         wallet = wallet, # Wallet to sign set weights using hotkey.
+            #         uids = metagraph.uids, # Uids of the miners to set weights for.
+            #         weights = weights, # Weights to set for the miners.
+            #         wait_for_inclusion = True
+            #     )
+            #     if result: bt.logging.success('Successfully set weights.')
+            #     else: bt.logging.error('Failed to set weights.') 
+
+            # # End the current step and prepare for the next iteration.
+            # step += 1
+            # # Resync our local state with the latest state from the blockchain.
             metagraph = subtensor.metagraph(config.netuid)
             # Sleep for a duration equivalent to the block time (i.e., time between successive blocks).
             time.sleep(bt.__blocktime__)
