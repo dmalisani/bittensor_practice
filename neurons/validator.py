@@ -1,21 +1,6 @@
 # The MIT License (MIT)
 # Copyright © 2023 Yuma Rao
-# TODO(developer): Set your name
-# Copyright © 2023 <your name>
 
-# Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
-# documentation files (the “Software”), to deal in the Software without restriction, including without limitation
-# the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
-# and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-# The above copyright notice and this permission notice shall be included in all copies or substantial portions of
-# the Software.
-
-# THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
-# THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-# OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-# DEALINGS IN THE SOFTWARE.
 
 import os
 import time
@@ -102,7 +87,6 @@ def main(config):
     bt.logging.info(f"Running validator for subnet: {config.netuid} on network: {config.subtensor.chain_endpoint} with config:")
     bt.logging.info(config)
 
-
     bt.logging.info("Setting up bittensor objects.")
 
     wallet = bt.wallet( config = config )
@@ -121,32 +105,26 @@ def main(config):
         bt.logging.error(f"\nYour validator: {wallet} if not registered to chain connection: {subtensor} \nRun btcli register and try again.")
         exit()
     else:
-        # Each miner gets a unique identity (UID) in the network for differentiation.
         my_subnet_uid = metagraph.hotkeys.index(wallet.hotkey.ss58_address)
         bt.logging.info(f"Running validator on uid: {my_subnet_uid}")
 
-    # Step 6: Set up initial scoring weights for validation
+
     bt.logging.info("Building validation weights.")
     alpha = 0.9
     scores = torch.ones_like(metagraph.S, dtype=torch.float32)
     bt.logging.info(f"Weights: {scores}")
 
-    # Step 7: The Main Validation Loop
     bt.logging.info("Starting validator loop.")
 
     for number, hash in validation_hash.items():
         try:
             bt.logging.info(f"sending {number} to hash")
             responses = dendrite.query(
-                # Send the query to all axons in the network.
                 metagraph.axons,
-                # Construct a dummy query.
-                template.protocol.ToHash( nounce_input = number ), # Construct a dummy query.
-                # All responses have the deserialize function called on them before returning.
+                template.protocol.ToHash(nounce_input=number),
                 deserialize = False, 
             )
 
-            # Log the results for monitoring purposes.
             bt.logging.info(f"Received responses: {responses}")
 
             for i, resp_i in enumerate(responses):
@@ -157,23 +135,33 @@ def main(config):
                 bt.logging.debug(f"Score: {score}")
                 scores[i] = alpha * score + (1 - alpha) * 0
 
+                if i % 2 == 0:
+                    weights = torch.nn.functional.normalize(scores, p=1.0, dim=0)
+                    bt.logging.info(f"Setting weights: {weights}")
+
+                    result = subtensor.set_weights(
+                        netuid = config.netuid,
+                        wallet = wallet,
+                        uids = metagraph.uids,
+                        weights = weights,
+                        wait_for_inclusion = True
+                    )
+                    if result: bt.logging.success('Successfully set weights.')
+                    else: bt.logging.error('Failed to set weights.') 
+
             metagraph = subtensor.metagraph(config.netuid)
-            # Sleep for a duration equivalent to the block time (i.e., time between successive blocks).
             time.sleep(bt.__blocktime__)
 
-        # If we encounter an unexpected error, log it for debugging.
         except RuntimeError as e:
             bt.logging.error(e)
             traceback.print_exc()
 
-        # If the user interrupts the program, gracefully exit.
         except KeyboardInterrupt:
             bt.logging.success("Keyboard interrupt detected. Exiting validator.")
             exit()
 
 
 if __name__ == "__main__":
-    # Parse the configuration.
     config = get_config()
-    # Run the main function.
     main( config )
+    
